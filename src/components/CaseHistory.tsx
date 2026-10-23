@@ -1,37 +1,30 @@
-import { Typography } from '@mui/material'
-import { Timeline } from 'antd'
+import { Timeline, Typography } from 'antd'
 import type { CaseEvent } from '../api'
 
-// The case's append-only history (FR-003), newest last, as the diagram was walked.
-
 export function CaseHistory({ events, nodeLabel }: { events: CaseEvent[]; nodeLabel: (node: string) => string }) {
-  if (events.length === 0)
-    return (
-      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-        No history yet.
-      </Typography>
-    )
-
   return (
     <Timeline
-      items={events.map((event, i) => ({
+      items={[...events].reverse().map((event) => ({
         key: event.id,
-        color: event.from_node === null ? 'blue' : i === events.length - 1 ? 'green' : 'gray',
+        color: event.from_node === null ? 'blue' : 'green',
         content: (
-          <>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {event.from_node === null ? 'Raised at: ' : event.outcome ? `${event.outcome} → ` : ''}
-              {nodeLabel(event.to_node)}
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-              {event.actor_name} · {new Date(event.created_at).toLocaleString()}
-            </Typography>
-            {event.note && (
-              <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic' }}>
-                “{event.note}”
-              </Typography>
+          <div>
+            <Typography.Text strong>{nodeLabel(event.to_node)}</Typography.Text>
+            {/* The outcome belongs to the step the case left, not the one it reached. */}
+            {event.outcome && event.from_node && (
+              <div>
+                <Typography.Text type="secondary">
+                  {nodeLabel(event.from_node)} → {event.outcome}
+                </Typography.Text>
+              </div>
             )}
-          </>
+            <div>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {event.actor_name} · {new Date(event.created_at).toLocaleString()}
+              </Typography.Text>
+            </div>
+            {event.note && <Typography.Paragraph style={{ margin: '4px 0 0' }}>{event.note}</Typography.Paragraph>}
+          </div>
         ),
       }))}
     />

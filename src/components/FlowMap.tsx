@@ -1,46 +1,37 @@
 import { Box, Chip, Stack, Typography } from '@mui/material'
-import { CheckOutlined } from '@ant-design/icons'
 import type { CaseEvent, FlowDefinition } from '../api'
 
-// The flow's steps in diagram order: where the case is now, where it has been, and the end steps.
+// The flow's diagram nodes in order: the current one filled, the ones this case has passed
+// through outlined in green, decision nodes marked with a diamond.
 
 export function FlowMap({ flow, current, events }: { flow: FlowDefinition; current: string; events: CaseEvent[] }) {
-  const visited = new Set(events.flatMap((e) => [e.from_node, e.to_node]).filter((n): n is string => !!n))
-
+  const visited = new Set(events.map((e) => e.to_node))
   return (
-    <Stack spacing={1}>
-      <Box component="ol" aria-label={`Flow ${flow.flow} steps`} sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, m: 0, p: 0, listStyle: 'none' }}>
+    <Box>
+      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: 0.75 }}>
         {flow.nodes.map((node) => {
           const isCurrent = node.key === current
-          const wasVisited = !isCurrent && visited.has(node.key)
-          const isEnd = node.kind === 'end'
+          const wasVisited = visited.has(node.key)
           return (
-            <Box component="li" key={node.key} aria-current={isCurrent ? 'step' : undefined}>
-              <Chip
-                size="small"
-                label={node.label}
-                icon={wasVisited ? <CheckOutlined /> : undefined}
-                color={isCurrent ? 'primary' : wasVisited ? 'success' : 'default'}
-                variant={isCurrent ? 'filled' : 'outlined'}
-                sx={{
-                  maxWidth: '100%',
-                  height: 'auto',
-                  py: 0.25,
-                  fontWeight: isCurrent ? 600 : 400,
-                  borderRadius: isEnd ? 1 : 4,
-                  borderStyle: isEnd && !isCurrent && !wasVisited ? 'dashed' : 'solid',
-                  opacity: isCurrent || wasVisited ? 1 : 0.75,
-                  '& .MuiChip-label': { whiteSpace: 'normal' },
-                  '& .MuiChip-icon': { fontSize: 12 },
-                }}
-              />
-            </Box>
+            <Chip
+              key={node.key}
+              size="small"
+              label={`${node.kind === 'decision' ? '◇ ' : ''}${node.label}`}
+              color={isCurrent ? 'primary' : wasVisited ? 'success' : 'default'}
+              variant={isCurrent ? 'filled' : 'outlined'}
+              sx={{
+                opacity: isCurrent || wasVisited ? 1 : 0.55,
+                fontWeight: isCurrent ? 600 : 400,
+                borderStyle: node.kind === 'end' ? 'double' : 'solid',
+                borderWidth: node.kind === 'end' ? 3 : 1,
+              }}
+            />
           )
         })}
-      </Box>
-      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-        Filled: current step · ✓ visited · square corners: end steps
+      </Stack>
+      <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, display: 'block' }}>
+        Filled: current step · Green: steps this case has passed · ◇ decision · double border: end
       </Typography>
-    </Stack>
+    </Box>
   )
 }

@@ -1,57 +1,46 @@
 import { useEffect, useState } from 'react'
-import { Alert, FormControlLabel, LinearProgress, MenuItem, Radio, RadioGroup, TextField } from '@mui/material'
-import { api } from '../../api'
-import { useAsync } from '../../hooks/useAsync'
-import { labelsOf } from '../../labels'
+import { FormControlLabel, MenuItem, Radio, RadioGroup, TextField } from '@mui/material'
+import { api, type Batch } from '../../api'
 import type { FormProps } from './NewCaseDialog'
 
-// F5:"Recall notice from regulator or vendor": the recalled batch and who sent the notice. The
-// backend finds every location holding it at the next step.
+// F5:"Recall notice from regulator or vendor"
 export function RecallForm({ onChange }: FormProps) {
-  const { data: batches, error } = useAsync(() => api.batches(), 'recall-batches')
+  const [batches, setBatches] = useState<Batch[]>([])
   const [batchId, setBatchId] = useState('')
   const [source, setSource] = useState('regulator')
-  const [reference, setReference] = useState('')
 
   useEffect(() => {
-    const batch = batches?.find((b) => String(b.id) === batchId)
-    const ref = reference.trim()
+    void api.batches().then((all) => setBatches(all.filter((b) => !b.blocked)))
+  }, [])
+
+  useEffect(() => {
+    const batch = batches.find((b) => String(b.id) === batchId)
     onChange(
       batch
         ? {
             flow: 5,
             start: 'f5_notice',
-            title: `Recall ${batch.item_name} ${batch.batch_no}${ref ? ` (${ref})` : ''}`,
+            title: `Recall ${batch.item_name} batch ${batch.batch_no}`,
             data: { batch_id: batch.id, source },
+            lines: [{ item_id: batch.item_id, qty: 1, batch_id: batch.id }],
           }
         : null,
     )
-  }, [batches, batchId, source, reference, onChange])
+  }, [batchId, source, batches, onChange])
 
-  if (error) return <Alert severity="error">{error}</Alert>
-  if (!batches) return <LinearProgress />
-
-  const open = batches.filter((b) => !b.blocked)
   return (
     <>
       <RadioGroup row value={source} onChange={(e) => setSource(e.target.value)}>
-        {labelsOf('source').map(([code, text]) => (
-          <FormControlLabel key={code} value={code} control={<Radio />} label={`From ${text.toLowerCase()}`} />
-        ))}
+        <FormControlLabel value="regulator" control={<Radio />} label="Notice from regulator" />
+        <FormControlLabel value="vendor" control={<Radio />} label="Notice from vendor" />
       </RadioGroup>
-      <TextField select label="Recalled batch" value={batchId} onChange={(e) => setBatchId(e.target.value)}>
-        {open.map((b) => (
+      <TextField select label="Batch named in the notice" value={batchId} onChange={(e) => setBatchId(e.target.value)}>
+        {batches.map((b) => (
           <MenuItem key={b.id} value={String(b.id)}>
-            {b.item_name} · {b.batch_no} · expires {b.expiry_date}
+            {b.item_name} · {b.batch_no} · exp {b.expiry_date}
           </MenuItem>
         ))}
       </TextField>
-      <TextField
-        label="Notice reference (optional)"
-        placeholder="e.g. CDSCO alert 2026/114"
-        value={reference}
-        onChange={(e) => setReference(e.target.value)}
-      />
     </>
   )
 }
