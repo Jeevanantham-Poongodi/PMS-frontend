@@ -1,13 +1,34 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { Alert, LinearProgress } from '@mui/material'
 import './App.css'
 import { api, ApiError, describeError, type Health, type Me } from './api'
 import { auth, authConfigError } from './supabaseClient'
 import { Items } from './pages/Items'
 import { MfaStep } from './pages/MfaStep'
 import { SignIn } from './pages/SignIn'
+import { AppShell } from './layout/AppShell'
+import { CaseDetail } from './pages/CaseDetail'
+import { Dashboard } from './pages/Dashboard'
+import { FlowCases } from './pages/FlowCases'
+import { Stock } from './pages/Stock'
+import { ReferenceProvider } from './state/reference'
 
 type Profile = { state: 'loading' } | { state: 'ready'; me: Me } | { state: 'mfa' } | { state: 'error'; message: string }
+
+// Sets the profile only when the request settles (never synchronously inside an effect).
+function fetchProfile(setProfile: (profile: Profile) => void) {
+  return api.me().then(
+    (me) => setProfile({ state: 'ready', me }),
+    (error) =>
+      setProfile(
+        error instanceof ApiError && error.code === 'MFA_REQUIRED'
+          ? { state: 'mfa' }
+          : { state: 'error', message: describeError(error) },
+      ),
+  )
+}
 
 function App() {
   const [health, setHealth] = useState<Health | null>(null)
@@ -26,22 +47,39 @@ function App() {
     return () => data.subscription.unsubscribe()
   }, [])
 
-  const loadProfile = useCallback(async () => {
-    setProfile({ state: 'loading' })
-    try {
-      setProfile({ state: 'ready', me: await api.me() })
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'MFA_REQUIRED') setProfile({ state: 'mfa' })
-      else setProfile({ state: 'error', message: describeError(error) })
-    }
-  }, [])
+  const loadProfile = () => void fetchProfile(setProfile)
 
   const accessToken = session?.access_token
   useEffect(() => {
-    if (accessToken) void loadProfile()
-  }, [accessToken, loadProfile])
+    if (accessToken) void fetchProfile(setProfile)
+  }, [accessToken])
 
   if (!authConfigError && !session) return <SignIn />
+
+  // Signed in with a usable profile: the flow screens inside the shell.
+  if (!authConfigError && profile.state === 'ready') {
+    const me = profile.me
+    return (
+      <BrowserRouter>
+        <AppShell me={me} health={health} onSignOut={() => void auth?.signOut()}>
+          <ReferenceProvider
+            fallback={(s) =>
+              s.state === 'error' ? <Alert severity="error">{s.message}</Alert> : <LinearProgress />
+            }
+          >
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/flows/:flowPath" element={<FlowCases />} />
+              <Route path="/cases/:caseId" element={<CaseDetail />} />
+              <Route path="/stock" element={<Stock />} />
+              <Route path="/items" element={<Items canWrite={me.permissions.includes('items.write')} />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </ReferenceProvider>
+        </AppShell>
+      </BrowserRouter>
+    )
+  }
 
   return (
     <div className="app">
@@ -64,26 +102,23 @@ function App() {
       <main>
         {authConfigError ? (
           <p className="error card">{authConfigError}</p>
-        ) : profile.state === 'loading' ? (
-          <p className="muted">Loading your account…</p>
         ) : profile.state === 'mfa' ? (
-          <MfaStep onDone={() => void loadProfile()} />
+          <MfaStep onDone={loadProfile} />
         ) : profile.state === 'error' ? (
           <div className="card">
             <p className="error" role="alert">{profile.message}</p>
-            <button type="button" onClick={() => void loadProfile()}>Retry</button>
+            <button
+              type="button"
+              onClick={() => {
+                setProfile({ state: 'loading' })
+                loadProfile()
+              }}
+            >
+              Retry
+            </button>
           </div>
         ) : (
-          <>
-            <p className="muted">
-              Signed in as <strong>{profile.me.display_name}</strong> · roles: {profile.me.roles.join(', ') || 'none'}
-            </p>
-            {profile.me.permissions.includes('items.read') ? (
-              <Items canWrite={profile.me.permissions.includes('items.write')} />
-            ) : (
-              <p className="card">Your role has no access to the item master yet. Ask your administrator.</p>
-            )}
-          </>
+          <p className="muted">Loading your account…</p>
         )}
       </main>
     </div>
