@@ -136,7 +136,15 @@ export type Dashboard = {
 
 export type Health = { status: 'ok' | 'degraded'; database: 'ok' | 'unreachable' | 'not_configured' }
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8000'
+const configuredUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8000'
+
+// An https page may not call an http API (mixed content). The deployed site (https, Vercel) then
+// calls its own /api path, which api/proxy.js forwards to the backend server-side.
+export function resolveBaseUrl(configured: string, pageProtocol: string | undefined): string {
+  return pageProtocol === 'https:' && configured.startsWith('http:') ? '' : configured
+}
+
+const baseUrl = resolveBaseUrl(configuredUrl, typeof window === 'undefined' ? undefined : window.location.protocol)
 
 const request = createApiClient(baseUrl, async () => {
   if (!auth) return null
